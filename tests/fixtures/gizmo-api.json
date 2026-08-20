@@ -1,0 +1,301 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Gizmo Works API",
+        "version": "1.4.0"
+    },
+    "servers": [
+        {
+            "url": "https://api.example.com/v1"
+        }
+    ],
+    "paths": {
+        "/widgets/search": {
+            "get": {
+                "operationId": "searchWidgets",
+                "tags": ["Widgets"],
+                "summary": "Search widgets",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "description": "Free-text search over widget names",
+                        "schema": {"type": "string"}
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "description": "Row offset",
+                        "schema": {"type": "integer"}
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "description": "Maximum rows to return",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Matching widgets",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Widget"}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid API key"
+                    }
+                }
+            }
+        },
+        "/widgets/{sn}": {
+            "get": {
+                "operationId": "getWidget",
+                "tags": ["Widgets"],
+                "summary": "Fetch a widget by serial number",
+                "parameters": [
+                    {
+                        "name": "sn",
+                        "in": "path",
+                        "required": true,
+                        "description": "Widget serial number",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The widget",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Widget"}
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No widget with that serial number"
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "updateWidget",
+                "tags": ["Widgets"],
+                "summary": "Partially update a widget",
+                "parameters": [
+                    {
+                        "name": "sn",
+                        "in": "path",
+                        "required": true,
+                        "description": "Widget serial number",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/WidgetUpdate"}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "The updated widget",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Widget"}
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No widget with that serial number"
+                    }
+                }
+            }
+        },
+        "/widgets/{sn}/alerts": {
+            "get": {
+                "operationId": "listWidgetAlerts",
+                "tags": ["Widgets"],
+                "summary": "List alerts raised by a widget",
+                "parameters": [
+                    {
+                        "name": "sn",
+                        "in": "path",
+                        "required": true,
+                        "description": "Widget serial number",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Alerts for the widget",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/WidgetAlert"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/widgets/{sn}/ping": {
+            "post": {
+                "operationId": "pingWidget",
+                "tags": ["Widgets"],
+                "summary": "Ping a widget's controller",
+                "parameters": [
+                    {
+                        "name": "sn",
+                        "in": "path",
+                        "required": true,
+                        "description": "Widget serial number",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Raw controller reply (shape varies by firmware)",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/assemblies": {
+            "get": {
+                "operationId": "listAssemblies",
+                "tags": ["Assemblies"],
+                "summary": "List assembly lines",
+                "responses": {
+                    "200": {
+                        "description": "All assembly lines",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Assembly"}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "gizmoKey": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Gizmo-Key"
+            }
+        },
+        "schemas": {
+            "Widget": {
+                "type": "object",
+                "properties": {
+                    "__rec_WidgetSN": {
+                        "type": "integer",
+                        "description": "Widget serial number (primary key)",
+                        "example": 40213
+                    },
+                    "calc_AssemblyCodeID": {
+                        "type": "string",
+                        "description": "Assembly code (calculated)",
+                        "example": "ASM-204"
+                    },
+                    "widget_name": {
+                        "type": "string",
+                        "description": "Display name",
+                        "example": "Torsion Coupler"
+                    },
+                    "bin_location": {
+                        "type": "string",
+                        "description": "Warehouse bin",
+                        "example": "A-17"
+                    },
+                    "built_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Build timestamp",
+                        "example": "2026-03-01T08:30:00Z"
+                    }
+                }
+            },
+            "WidgetAlert": {
+                "allOf": [
+                    {"$ref": "#/components/schemas/Widget"},
+                    {
+                        "type": "object",
+                        "properties": {
+                            "alert_type": {
+                                "type": "string",
+                                "description": "Alert category",
+                                "example": "overheat"
+                            },
+                            "alert_note": {
+                                "type": "string",
+                                "description": "Operator note"
+                            },
+                            "raised_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "description": "When the alert fired"
+                            }
+                        }
+                    }
+                ]
+            },
+            "WidgetUpdate": {
+                "type": "object",
+                "properties": {
+                    "widget_name": {
+                        "type": "string",
+                        "description": "Display name"
+                    },
+                    "bin_location": {
+                        "type": "string",
+                        "description": "Warehouse bin"
+                    },
+                    "calc_AssemblyCodeID": {
+                        "type": "string",
+                        "description": "Assembly code"
+                    }
+                }
+            },
+            "Assembly": {
+                "type": "object",
+                "properties": {
+                    "__rec_AssemblySN": {
+                        "type": "integer",
+                        "description": "Assembly serial number",
+                        "example": 7
+                    },
+                    "assembly_name": {
+                        "type": "string",
+                        "description": "Line name",
+                        "example": "Coupler Line"
+                    },
+                    "station_count": {
+                        "type": "integer",
+                        "description": "Number of stations on the line"
+                    }
+                }
+            }
+        }
+    }
+}

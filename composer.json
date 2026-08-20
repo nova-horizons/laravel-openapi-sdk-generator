@@ -1,0 +1,65 @@
+{
+    "name": "nova-horizons/laravel-openapi-sdk-generator",
+    "description": "Generate Laravel-native API clients (Http facade, Collections, readonly DTOs) from OpenAPI specs",
+    "homepage": "https://github.com/nova-horizons/laravel-openapi-sdk-generator",
+    "support": {
+        "issues": "https://github.com/nova-horizons/laravel-openapi-sdk-generator/issues",
+        "source": "https://github.com/nova-horizons/laravel-openapi-sdk-generator"
+    },
+    "keywords": [
+        "laravel",
+        "openapi",
+        "sdk",
+        "generator",
+        "api-client",
+        "http-client",
+        "code-generation"
+    ],
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Nova Horizons",
+            "homepage": "https://github.com/nova-horizons"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "devizzent/cebe-php-openapi": "^1.1.5",
+        "nette/php-generator": "^4.2.2",
+        "illuminate/support": "^12.66 || ^13.0",
+        "illuminate/console": "^12.66 || ^13.0"
+    },
+    "require-dev": {
+        "illuminate/http": "^12.66 || ^13.0",
+        "illuminate/process": "^12.66 || ^13.0",
+        "nesbot/carbon": "^3.13.2",
+        "phpstan/phpstan": "^2.2.8",
+        "laravel/pint": "^1.30.5",
+        "phpunit/phpunit": "^12.0 || ^13.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "NovaHorizons\\SdkGenerator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "NovaHorizons\\SdkGenerator\\Tests\\": "tests/"
+        }
+    },
+    "bin": [
+        "bin/sdk-generate"
+    ],
+    "extra": {
+        "laravel": {
+            "providers": [
+                "NovaHorizons\\SdkGenerator\\Laravel\\SdkGeneratorServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}

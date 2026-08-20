@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+        laravel: ['12', '13']
+        include:
+          - laravel: '12'
+            constraint: '^12.66'
+          - laravel: '13'
+            constraint: '^13.0'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Pin illuminate to Laravel ${{ matrix.laravel }}
+        run: |
+          composer require --no-update "illuminate/support:${{ matrix.constraint }}" "illuminate/console:${{ matrix.constraint }}"
+          composer require --no-update --dev "illuminate/http:${{ matrix.constraint }}" "illuminate/process:${{ matrix.constraint }}"
+
+      - uses: ramsey/composer-install@v4
+        with:
+          dependency-versions: highest
+
+      - name: Run tests
+        run: vendor/bin/phpunit
+
+      - name: Generate SDKs from the fixtures
+        run: |
+          php bin/sdk-generate tests/fixtures/gizmo-api.json --namespace='Gizmo\\Sdk' --client=GizmoClient --allow=missing-error-schema,untyped-response --out=build/generated/gizmo-sdk
+          php bin/sdk-generate tests/fixtures/orbit-api.json --namespace='Orbit\\Sdk' --out=build/generated/orbit-sdk
+
+      - name: Generated code passes PHPStan level max on this dependency set
+        run: vendor/bin/phpstan analyse build/generated --level=max --no-progress --memory-limit=1G
+
+  quality:
+    name: PHPStan & Pint (generator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+
+      - uses: ramsey/composer-install@v4
+
+      - name: PHPStan (level 8, src)
+        run: vendor/bin/phpstan --no-progress
+
+      - name: Pint
+        run: vendor/bin/pint --test
+
+  corpus:
+    name: Generated corpus contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+
+      - uses: ramsey/composer-install@v4
+
+      - name: Regenerate examples from the fixtures
+        run: |
+          rm -rf examples/gizmo-sdk examples/orbit-sdk
+          php bin/sdk-generate tests/fixtures/gizmo-api.json --namespace='Gizmo\\Sdk' --client=GizmoClient --allow=missing-error-schema,untyped-response --out=examples/gizmo-sdk
+          php bin/sdk-generate tests/fixtures/orbit-api.json --namespace='Orbit\\Sdk' --out=examples/orbit-sdk
+          vendor/bin/pint examples/ > /dev/null
+
+      - name: Committed examples match regenerated output
+        run: |
+          git status --porcelain -- examples
+          test -z "$(git status --porcelain -- examples)"
+
+      - name: Generated code passes Pint
+        run: vendor/bin/pint --test examples/
+
+      - name: Generated code passes PHPStan level max
+        run: vendor/bin/phpstan analyse examples --level=max --no-progress --memory-limit=1G

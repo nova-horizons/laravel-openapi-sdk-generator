@@ -1,0 +1,319 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Orbit",
+        "version": "2.0.0"
+    },
+    "servers": [
+        {
+            "url": "https://api.example.com/v1"
+        }
+    ],
+    "paths": {
+        "/beacons": {
+            "get": {
+                "operationId": "listBeacons",
+                "tags": ["Beacons"],
+                "summary": "List beacons",
+                "parameters": [
+                    {
+                        "name": "active",
+                        "in": "query",
+                        "required": false,
+                        "description": "Only beacons currently transmitting",
+                        "schema": {"type": "boolean"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "All beacons",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Beacon"}
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid token",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Error"}
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "operationId": "createBeacon",
+                "tags": ["Beacons"],
+                "summary": "Register a beacon from a launch plan",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/LaunchPlan"}
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "The registered beacon",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Beacon"}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Launch plan failed validation",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Error"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beacons/{id}": {
+            "get": {
+                "operationId": "getBeacon",
+                "tags": ["Beacons"],
+                "summary": "Fetch a beacon",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Beacon id",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The beacon",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Beacon"}
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No beacon with that id",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Error"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beacons/{id}/telemetry": {
+            "get": {
+                "operationId": "telemetrySnapshot",
+                "tags": ["Telemetry"],
+                "summary": "Current telemetry snapshot for a beacon",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Beacon id",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Telemetry snapshot",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "sampled_at": {
+                                            "type": "string",
+                                            "format": "date-time",
+                                            "example": "2026-02-10T09:00:00Z"
+                                        },
+                                        "battery_pct": {
+                                            "type": "number",
+                                            "example": 87.5
+                                        },
+                                        "signal": {
+                                            "type": "object",
+                                            "properties": {
+                                                "strength_db": {
+                                                    "type": "number",
+                                                    "example": -71.5
+                                                },
+                                                "locked": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No beacon with that id",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Error"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/beacons/{id}/usage": {
+            "get": {
+                "operationId": "beaconUsage",
+                "tags": ["Telemetry"],
+                "summary": "Message usage totals for a beacon",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "description": "Beacon id",
+                        "schema": {"type": "integer"}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Usage totals by channel",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/UsageReport"}
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "No beacon with that id",
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/Error"}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearer": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "Error": {
+                "type": "object",
+                "required": ["code", "message"],
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Machine-readable error code",
+                        "example": "not_found"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Human-readable explanation",
+                        "example": "No beacon with that id"
+                    }
+                }
+            },
+            "Beacon": {
+                "type": "object",
+                "required": ["id", "callsign"],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "example": 12
+                    },
+                    "callsign": {
+                        "type": "string",
+                        "description": "Unique transmit callsign",
+                        "example": "AURORA-7"
+                    },
+                    "active": {
+                        "type": "boolean",
+                        "description": "Currently transmitting",
+                        "example": true
+                    },
+                    "launched_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2025-11-05T14:20:00Z"
+                    },
+                    "last_fix": {
+                        "nullable": true,
+                        "oneOf": [
+                            {"$ref": "#/components/schemas/GeoFix"}
+                        ]
+                    }
+                }
+            },
+            "GeoFix": {
+                "type": "object",
+                "required": ["lat", "lon"],
+                "properties": {
+                    "lat": {
+                        "type": "number",
+                        "example": -41.29
+                    },
+                    "lon": {
+                        "type": "number",
+                        "example": 174.78
+                    }
+                }
+            },
+            "LaunchPlan": {
+                "type": "object",
+                "required": ["callsign", "cadence"],
+                "properties": {
+                    "callsign": {
+                        "type": "string",
+                        "description": "Requested transmit callsign",
+                        "example": "AURORA-7"
+                    },
+                    "cadence": {
+                        "type": "string",
+                        "description": "Reporting cadence",
+                        "enum": ["daily", "weekly", "monthly"]
+                    },
+                    "window_start": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Earliest acceptable launch window"
+                    }
+                }
+            },
+            "UsageReport": {
+                "type": "object",
+                "required": ["total"],
+                "properties": {
+                    "total": {
+                        "type": "integer",
+                        "description": "Total messages this cycle",
+                        "example": 3120
+                    },
+                    "counts": {
+                        "type": "object",
+                        "description": "Message counts keyed by channel",
+                        "additionalProperties": {"type": "integer"},
+                        "example": {"telemetry": 2900, "commands": 220}
+                    }
+                }
+            }
+        }
+    }
+}

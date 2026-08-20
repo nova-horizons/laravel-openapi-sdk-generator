@@ -1,0 +1,7 @@
+parameters:
+    level: 8
+    paths:
+        - src
+    stubFiles: []
+    bootstrapFiles:
+        - phpstan-laravel-stubs.php
