@@ -33,7 +33,7 @@ jobs:
           composer require --no-update "illuminate/support:${{ matrix.constraint }}" "illuminate/console:${{ matrix.constraint }}"
           composer require --no-update --dev "illuminate/http:${{ matrix.constraint }}" "illuminate/process:${{ matrix.constraint }}"
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
         with:
           dependency-versions: highest
 
@@ -59,7 +59,7 @@ jobs:
           php-version: '8.5'
           coverage: none
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - name: PHPStan (level 8, src)
         run: vendor/bin/phpstan --no-progress
@@ -78,7 +78,7 @@ jobs:
           php-version: '8.5'
           coverage: none
 
-      - uses: ramsey/composer-install@v3
+      - uses: ramsey/composer-install@v4
 
       - name: Regenerate examples from the fixtures
         run: |
