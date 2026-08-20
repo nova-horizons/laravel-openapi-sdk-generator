@@ -102,6 +102,7 @@ final class Mapper
         $this->markSentinels();
 
         $info = $this->raw['info'] ?? [];
+        [$apiKeyHeader, $bearerAuth] = $this->auth();
 
         return new ApiDef(
             title: is_string($info['title'] ?? null) ? $info['title'] : 'Api',
@@ -109,7 +110,8 @@ final class Mapper
             objects: $this->objects,
             enums: $this->enums,
             resources: $resources,
-            apiKeyHeader: $this->apiKeyHeader(),
+            apiKeyHeader: $apiKeyHeader,
+            bearerAuth: $bearerAuth,
             errorClass: $this->errorClass(),
             serverUrl: $this->serverUrl(),
         );
@@ -177,11 +179,9 @@ final class Mapper
                 throw new \RuntimeException('Only internal $refs are supported, got: '.var_export($ref, true));
             }
 
-            $segments = explode('/', substr($ref, 2));
-            if (count($segments) === 3 && $segments[0] === 'components' && $segments[1] === 'schemas') {
-                $name = $segments[2];
-            }
+            $name = self::schemaNameFromRef($ref) ?? $name;
 
+            $segments = explode('/', substr($ref, 2));
             $target = $this->raw;
             foreach ($segments as $segment) {
                 $segment = str_replace(['~1', '~0'], ['/', '~'], $segment);
@@ -194,6 +194,21 @@ final class Mapper
         }
 
         return [$name, $node];
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @return array{0: ?string, 1: array<string, mixed>} [schemaName, schema]
+     */
+    private function resolveIfRef(array $node): array
+    {
+        return isset($node['$ref']) ? $this->resolve($node) : [null, $node];
+    }
+
+    /** Schema name from an internal component-schema $ref (not a deeper pointer), else null. */
+    private static function schemaNameFromRef(mixed $ref): ?string
+    {
+        return is_string($ref) && preg_match('#^\#/components/schemas/([^/]+)$#', $ref, $m) ? $m[1] : null;
     }
 
     private function mapNamedSchema(string $name): TypeRef
@@ -223,17 +238,16 @@ final class Mapper
     private function mapSchema(array $schema, string $nameHint, ?string $forcedClassName = null): TypeRef
     {
         if (isset($schema['$ref'])) {
-            [$name] = $this->resolve($schema);
+            [$name, $schema] = $this->resolve($schema);
             if ($name !== null) {
                 return $this->mapNamedSchema($name);
             }
-            [, $schema] = $this->resolve($schema);
         }
 
         $nullable = ($schema['nullable'] ?? false) === true;
 
         if (isset($schema['allOf']) && is_array($schema['allOf'])) {
-            return $this->mapAllOf($schema, $nameHint, $forcedClassName)->with($nullable);
+            return $this->mapObject($this->flattenAllOf($schema), $nameHint, $forcedClassName, false)->with($nullable);
         }
 
         if (isset($schema['oneOf']) || isset($schema['anyOf'])) {
@@ -394,8 +408,15 @@ final class Mapper
         );
     }
 
-    /** @param array<string, mixed> $schema */
-    private function mapAllOf(array $schema, string $nameHint, ?string $forcedClassName): TypeRef
+    /**
+     * Merges an allOf schema's parts into one object schema (merge, never
+     * inheritance). Later parts override earlier properties; the schema's own
+     * description wins, else the first part description found.
+     *
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function flattenAllOf(array $schema): array
     {
         $merged = ['type' => 'object', 'properties' => [], 'required' => []];
         if (isset($schema['description'])) {
@@ -406,12 +427,10 @@ final class Mapper
             if (! is_array($part)) {
                 continue;
             }
-            [, $resolved] = isset($part['$ref']) ? $this->resolve($part) : [null, $part];
+            [, $resolved] = $this->resolveIfRef($part);
 
             if (isset($resolved['allOf'])) {
-                // Nested allOf: recurse by flattening through a temp schema.
-                $inner = $this->flattenAllOf($resolved);
-                $resolved = $inner;
+                $resolved = $this->flattenAllOf($resolved);
             }
 
             foreach (($resolved['properties'] ?? []) as $name => $prop) {
@@ -426,29 +445,6 @@ final class Mapper
         }
 
         $merged['required'] = array_values(array_unique($merged['required']));
-
-        return $this->mapObject($merged, $nameHint, $forcedClassName, false);
-    }
-
-    /**
-     * @param  array<string, mixed>  $schema
-     * @return array<string, mixed>
-     */
-    private function flattenAllOf(array $schema): array
-    {
-        $merged = ['type' => 'object', 'properties' => [], 'required' => []];
-        foreach ($schema['allOf'] as $part) {
-            [, $resolved] = isset($part['$ref']) ? $this->resolve($part) : [null, $part];
-            if (isset($resolved['allOf'])) {
-                $resolved = $this->flattenAllOf($resolved);
-            }
-            foreach (($resolved['properties'] ?? []) as $name => $prop) {
-                $merged['properties'][$name] = $prop;
-            }
-            foreach (($resolved['required'] ?? []) as $req) {
-                $merged['required'][] = $req;
-            }
-        }
 
         return $merged;
     }
@@ -546,7 +542,7 @@ final class Mapper
             if (! is_array($param)) {
                 continue;
             }
-            [, $param] = isset($param['$ref']) ? $this->resolve($param) : [null, $param];
+            [, $param] = $this->resolveIfRef($param);
 
             $in = $param['in'] ?? null;
             $wireName = $param['name'] ?? null;
@@ -585,7 +581,7 @@ final class Mapper
             );
         }
 
-        // Path params required + first, in path order; query params keep spec order.
+        // Path params first, in path order; then required query params before optional ones (spec order within each group).
         usort($params, function (ParamDef $a, ParamDef $b) use ($path): int {
             if ($a->in !== $b->in) {
                 return $a->in === 'path' ? -1 : 1;
@@ -602,7 +598,7 @@ final class Mapper
         $bodyRequired = false;
         $requestBody = $op['requestBody'] ?? null;
         if (is_array($requestBody)) {
-            [, $requestBody] = isset($requestBody['$ref']) ? $this->resolve($requestBody) : [null, $requestBody];
+            [, $requestBody] = $this->resolveIfRef($requestBody);
             $bodyRequired = ($requestBody['required'] ?? false) === true;
 
             $jsonContent = $requestBody['content']['application/json'] ?? null;
@@ -628,7 +624,7 @@ final class Mapper
             if (! is_array($response)) {
                 continue;
             }
-            [, $response] = isset($response['$ref']) ? $this->resolve($response) : [null, $response];
+            [, $response] = $this->resolveIfRef($response);
             $jsonContent = $response['content']['application/json'] ?? null;
             $schema = is_array($jsonContent) && is_array($jsonContent['schema'] ?? null) ? $jsonContent['schema'] : null;
 
@@ -741,8 +737,9 @@ final class Mapper
             if (! is_array($n)) {
                 return;
             }
-            if (isset($n['$ref']) && is_string($n['$ref']) && preg_match('#^\#/components/schemas/(.+)$#', $n['$ref'], $m)) {
-                $names[] = $m[1];
+            $name = self::schemaNameFromRef($n['$ref'] ?? null);
+            if ($name !== null) {
+                $names[] = $name;
             }
             foreach ($n as $child) {
                 $walk($child);
@@ -761,10 +758,8 @@ final class Mapper
                 continue;
             }
 
-            $object->usedInRequest = isset($this->requestSide[$schemaName]);
-            $object->usedInResponse = isset($this->responseSide[$schemaName]);
-            $object->sentinelStyle = $object->usedInRequest
-                && ! $object->usedInResponse
+            $object->sentinelStyle = isset($this->requestSide[$schemaName])
+                && ! isset($this->responseSide[$schemaName])
                 && $object->properties !== [];
         }
     }
@@ -793,8 +788,9 @@ final class Mapper
                     if (! is_array($schema)) {
                         continue;
                     }
-                    if (is_string($schema['$ref'] ?? null) && preg_match('#^\#/components/schemas/(.+)$#', $schema['$ref'], $m)) {
-                        $names[$m[1]] = true;
+                    $name = self::schemaNameFromRef($schema['$ref'] ?? null);
+                    if ($name !== null) {
+                        $names[$name] = true;
                     }
                     // inline error bodies are ignored — they don't disqualify the rest
                 }
@@ -812,20 +808,21 @@ final class Mapper
 
     // ---------------------------------------------------------------- security
 
-    private function apiKeyHeader(): ?string
+    /** @return array{0: ?string, 1: bool} [apiKeyHeader, bearerAuth] from the first supported security scheme */
+    private function auth(): array
     {
         foreach (($this->raw['components']['securitySchemes'] ?? []) as $scheme) {
             if (! is_array($scheme)) {
                 continue;
             }
             if (($scheme['type'] ?? null) === 'apiKey' && ($scheme['in'] ?? null) === 'header' && is_string($scheme['name'] ?? null)) {
-                return $scheme['name'];
+                return [$scheme['name'], false];
             }
             if (($scheme['type'] ?? null) === 'http' && ($scheme['scheme'] ?? null) === 'bearer') {
-                return 'Authorization';
+                return ['Authorization', true];
             }
         }
 
-        return null;
+        return [null, false];
     }
 }

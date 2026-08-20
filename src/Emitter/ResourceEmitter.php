@@ -18,12 +18,8 @@ final readonly class ResourceEmitter
     public function __construct(
         private string $namespace,
         private Types $types,
+        private Expressions $expressions,
     ) {}
-
-    private function cast(string $method, string $args, string $path): string
-    {
-        return $this->types->castClass()."::{$method}({$args}, ".var_export($path, true).')';
-    }
 
     /** @param list<OperationDef> $operations */
     public function emit(string $resourceName, array $operations): PhpFile
@@ -41,33 +37,12 @@ final readonly class ResourceEmitter
         foreach ($operations as $operation) {
             $this->addOperation($namespace, $class, $operation);
 
-            if ($this->isPaginated($operation)) {
+            if ($operation->isPaginated()) {
                 $this->addLazyVariant($namespace, $class, $operation);
             }
         }
 
         return $file;
-    }
-
-    /** GET returning a list of DTOs, with int offset+limit query params. */
-    private function isPaginated(OperationDef $op): bool
-    {
-        if ($op->httpMethod !== 'get'
-            || $op->returnType?->kind !== TypeKind::ArrayOf
-            || ($op->returnType->items ?? null)?->kind !== TypeKind::Object) {
-            return false;
-        }
-
-        $found = 0;
-        foreach ($op->params as $param) {
-            if ($param->in === 'query'
-                && in_array($param->wireName, ['offset', 'limit'], true)
-                && $param->type->kind === TypeKind::Int) {
-                $found++;
-            }
-        }
-
-        return $found === 2;
     }
 
     private function addLazyVariant(PhpNamespace $namespace, ClassType $class, OperationDef $op): void
@@ -85,7 +60,7 @@ final readonly class ResourceEmitter
 
         $passthrough = array_values(array_filter(
             $op->params,
-            fn (ParamDef $p): bool => ! ($p->in === 'query' && in_array($p->wireName, ['offset', 'limit'], true)),
+            fn (ParamDef $p): bool => ! ($p->in === 'query' && in_array($p->wireName, OperationDef::PAGING_PARAMS, true)),
         ));
 
         $args = [];
@@ -122,7 +97,7 @@ final readonly class ResourceEmitter
             '});',
         ];
 
-        $method->setBody(implode("\n", $this->simplifyLines($namespace, $lines)));
+        $method->setBody(implode("\n", Types::simplifyLines($namespace, $lines)));
     }
 
     private function addOperation(PhpNamespace $namespace, ClassType $class, OperationDef $op): void
@@ -217,18 +192,17 @@ final readonly class ResourceEmitter
             $method->addComment('@throws UnexpectedResponseException when the response defies the spec');
         }
 
-        $method->setBody(implode("\n", $this->simplifyLines($namespace, $lines)));
+        $method->setBody(implode("\n", Types::simplifyLines($namespace, $lines)));
     }
 
     /** Expression for a query-array value; null values are filtered out. */
     private function queryValue(ParamDef $param): string
     {
         $access = '$'.$param->phpName;
-        $op = $param->required && ! $param->type->nullable ? '->' : '?->';
+        $definitelySet = $param->required && ! $param->type->nullable;
 
         return match ($param->type->kind) {
-            TypeKind::Date => "{$access}{$op}format('Y-m-d')",
-            TypeKind::DateTime => "{$access}{$op}toIso8601String()",
+            TypeKind::Date, TypeKind::DateTime => $this->expressions->toWire($access, $param->type, $definitelySet),
             TypeKind::Bool => $param->required ? "{$access} ? '1' : '0'" : "{$access} === null ? null : ({$access} ? '1' : '0')",
             default => $access,
         };
@@ -345,6 +319,8 @@ final readonly class ResourceEmitter
             return;
         }
 
+        $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
+
         switch ($returnType->kind) {
             case TypeKind::ArrayOf:
                 $namespace->addUse('Illuminate\\Support\\Collection');
@@ -353,87 +329,54 @@ final readonly class ResourceEmitter
                 $method->setReturnType('Illuminate\\Support\\Collection');
                 $method->addComment("@return Collection<int, {$itemDoc}>");
 
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
-                $lines[] = '$data = '.$this->cast('toList', '$response->json() ?? []', $rpath).';';
+                $lines[] = '$data = '.$this->expressions->cast('toList', '$response->json() ?? []', $rpath).';';
                 $lines[] = '';
                 if ($items->kind === TypeKind::Object) {
                     $itemClass = $this->types->dtoClass((string) $items->className);
-                    $lines[] = "return (new Collection(\$data))->map(static fn (mixed \$item): {$itemClass} => {$itemClass}::fromArray(".$this->cast('toArray', '$item', $rpath.'[]').'));';
+                    $lines[] = "return (new Collection(\$data))->map(static fn (mixed \$item): {$itemClass} => ".$this->expressions->hydrate('$item', $items, $rpath.'[]').');';
                 } elseif (in_array($items->kind, [TypeKind::String, TypeKind::Int, TypeKind::Float, TypeKind::Bool], true)) {
                     $native = $this->types->native($items);
-                    $castMethod = 'to'.ucfirst($native);
-                    $lines[] = "return (new Collection(\$data))->map(static fn (mixed \$value): {$native} => ".$this->cast($castMethod, '$value', $rpath.'[]').');';
+                    $lines[] = "return (new Collection(\$data))->map(static fn (mixed \$value): {$native} => ".$this->expressions->cast($this->expressions->castMethod($items), '$value', $rpath.'[]').');';
                 } else {
                     $lines[] = 'return new Collection($data);';
                 }
                 break;
 
             case TypeKind::Object:
-                $class = $this->types->dtoClass((string) $returnType->className);
-                $method->setReturnType($class);
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
+                $method->setReturnType($this->types->dtoClass((string) $returnType->className));
                 $lines[] = '';
-                $lines[] = "return {$class}::fromArray(".$this->cast('toArray', '$response->json()', $rpath).');';
+                $lines[] = 'return '.$this->expressions->hydrate('$response->json()', $returnType, $rpath).';';
                 break;
 
             case TypeKind::Enum:
                 $class = $this->types->enumClass((string) $returnType->className);
                 $method->setReturnType($class);
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
                 $lines[] = '';
-                $lines[] = "return {$class}::from(".$this->cast('toString', '$response->json()', $rpath).');';
+                $lines[] = "return {$class}::from(".$this->expressions->cast('toString', '$response->json()', $rpath).');';
                 break;
 
             case TypeKind::String:
             case TypeKind::Int:
             case TypeKind::Float:
             case TypeKind::Bool:
-                $native = $this->types->native($returnType);
-                $method->setReturnType($native);
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
+                $method->setReturnType($this->types->native($returnType));
                 $lines[] = '';
-                $lines[] = 'return '.$this->cast('to'.ucfirst($native), '$response->json()', $rpath).';';
+                $lines[] = 'return '.$this->expressions->cast($this->expressions->castMethod($returnType), '$response->json()', $rpath).';';
                 break;
 
             case TypeKind::Map:
-                $items = $returnType->items ?? TypeRef::mixed();
-                $castMethod = match ($items->kind) {
-                    TypeKind::Int => 'toIntMap',
-                    TypeKind::Float => 'toFloatMap',
-                    TypeKind::Bool => 'toBoolMap',
-                    TypeKind::String => 'toStringMap',
-                    default => 'toMap',
-                };
                 $method->setReturnType('array');
                 $method->addComment('@return '.$this->types->doc($returnType));
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
                 $lines[] = '';
-                $lines[] = 'return '.$this->cast($castMethod, '$response->json()', $rpath).';';
+                $lines[] = 'return '.$this->expressions->cast($this->expressions->castMethod($returnType), '$response->json()', $rpath).';';
                 break;
 
             case TypeKind::Mixed:
             default:
                 $method->setReturnType('mixed');
-                $lines[] = "\$response = \$this->send(fn (): Response => {$httpCall});";
                 $lines[] = '';
                 $lines[] = 'return $response->json();';
                 break;
         }
-    }
-
-    /**
-     * @param  list<string>  $lines
-     * @return list<string>
-     */
-    private function simplifyLines(PhpNamespace $namespace, array $lines): array
-    {
-        return array_map(
-            fn (string $line): string => preg_replace_callback(
-                '/\\\\[A-Za-z0-9_\\\\]+/',
-                fn (array $m): string => $namespace->simplifyName($m[0]),
-                $line,
-            ) ?? $line,
-            $lines,
-        );
     }
 }

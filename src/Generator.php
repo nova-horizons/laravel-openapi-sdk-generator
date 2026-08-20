@@ -34,9 +34,10 @@ final readonly class Generator
 {
     public function __construct(private Config $config) {}
 
-    public function generate(): GenerationResult
+    /** Pass a preloaded spec to skip re-parsing when generating for several consumers. */
+    public function generate(?LoadedSpec $spec = null): GenerationResult
     {
-        $spec = SpecLoader::load($this->config->specPath);
+        $spec ??= SpecLoader::load($this->config->specPath);
 
         $mapper = new Mapper($this->config);
         $api = $mapper->map($spec);
@@ -92,7 +93,7 @@ final readonly class Generator
         }
 
         // Resources
-        $resourceEmitter = new ResourceEmitter($ns, $types);
+        $resourceEmitter = new ResourceEmitter($ns, $types, $expressions);
         foreach ($api->resources as $resourceName => $operations) {
             $files['Resources/'.$resourceName.'Resource.php'] = $resourceEmitter->emit($resourceName, $operations);
         }
@@ -100,7 +101,7 @@ final readonly class Generator
         $written = [];
         $printer = new PsrPrinter;
 
-        $specHash = substr(md5((string) file_get_contents($this->config->specPath)), 0, 12);
+        $specHash = substr($spec->hash, 0, 12);
 
         foreach ($files as $relativePath => $file) {
             $this->stampGenerated($file, $api->title, $api->version, $specHash);

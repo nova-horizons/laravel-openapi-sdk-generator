@@ -22,6 +22,8 @@ $client = \Gizmo\Sdk\GizmoClient::make(apiKey: '...');  // base URL defaults to 
 
 With no URL from config, `make()`, or the spec, the client throws `Exceptions\ConfigurationException` on first use — never a silent misdirected request.
 
+`.timeout` is in seconds (Laravel's default 30s when unset). `.retries` is off unless set; when set, only safe failures retry — transport errors always, 5xx/429 on GETs only, with linear backoff — while other 4xx responses and non-idempotent requests surface immediately.
+
 ## Errors
 
 Everything this SDK throws implements `Exceptions\GizmoException`:
@@ -41,6 +43,8 @@ Http::fake([GizmoFake::<OPERATION> => Http::response(GizmoFake::<factory>([...ov
 ```
 
 Factories return wire-keyed arrays seeded from spec examples; `<factory>Dto()` variants return hydrated DTOs. Or bypass HTTP entirely with `GizmoClient::fromPendingRequest()`.
+
+> **Fake patterns are method-blind.** `Http::fake()` matches URLs only, so operations on the same path (list vs create) share an identical pattern constant — as array keys, one silently overwrites the other — and a wildcard like `*/things/*` also matches deeper routes. Register more specific patterns first, and branch on `$request->method()` in a fake closure when two operations share a URL.
 
 ## Endpoints
 

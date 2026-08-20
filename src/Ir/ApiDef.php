@@ -19,6 +19,8 @@ final class ApiDef
         public array $resources = [],
         /** Header name for apiKey auth (from securitySchemes, or config default). */
         public ?string $apiKeyHeader = null,
+        /** True when the spec declares http bearer auth — the api key is sent via withToken(). */
+        public bool $bearerAuth = false,
         /** DTO class name for error bodies, when every documented non-2xx body uses one schema. */
         public ?string $errorClass = null,
         /** Default base URL from spec servers[0], when trustworthy (absolute, non-localhost). */

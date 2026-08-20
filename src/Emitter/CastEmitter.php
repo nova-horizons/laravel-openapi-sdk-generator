@@ -30,29 +30,73 @@ final readonly class CastEmitter
         $class->addComment("Runtime narrowing for wire values.\n");
         $class->addComment('@internal generated support code — throws UnexpectedResponseException when the API response does not match the OpenAPI spec.');
 
+        // Coercion is deliberately narrow: legacy backends interchange numbers and
+        // numeric strings, so those convert — anything lossy or non-numeric throws.
         $scalars = [
-            'toString' => ['string', 'is_string($value)', '(string) $value'],
-            'toInt' => ['int', 'is_int($value)', '(int) $value'],
-            'toFloat' => ['float', 'is_float($value) || is_int($value)', '(float) $value'],
-            'toBool' => ['bool', 'is_bool($value)', '(bool) $value'],
+            'toString' => ['string', [
+                'if (is_string($value)) {',
+                '    return $value;',
+                '}',
+                '',
+                'if (is_int($value) || is_float($value)) {',
+                '    return (string) $value;',
+                '}',
+                '',
+                "self::fail('string', \$value, \$path);",
+            ]],
+            'toInt' => ['int', [
+                'if (is_int($value)) {',
+                '    return $value;',
+                '}',
+                '',
+                '// Integral numeric strings ("42", "42.0") coerce; "12.7" or "abc" throw.',
+                'if (is_string($value) && is_numeric($value)) {',
+                '    $int = (int) $value;',
+                '    if ((string) $int === $value || (float) $value === (float) $int) {',
+                '        return $int;',
+                '    }',
+                '}',
+                '',
+                'if (is_float($value) && $value === (float) (int) $value) {',
+                '    return (int) $value;',
+                '}',
+                '',
+                "self::fail('int', \$value, \$path);",
+            ]],
+            'toFloat' => ['float', [
+                'if (is_float($value) || is_int($value)) {',
+                '    return $value;',
+                '}',
+                '',
+                'if (is_string($value) && is_numeric($value)) {',
+                '    return (float) $value;',
+                '}',
+                '',
+                "self::fail('float', \$value, \$path);",
+            ]],
+            'toBool' => ['bool', [
+                'if (is_bool($value)) {',
+                '    return $value;',
+                '}',
+                '',
+                "if (\$value === 0 || \$value === '0' || \$value === 'false') {",
+                '    return false;',
+                '}',
+                '',
+                "if (\$value === 1 || \$value === '1' || \$value === 'true') {",
+                '    return true;',
+                '}',
+                '',
+                "self::fail('bool', \$value, \$path);",
+            ]],
         ];
 
-        foreach ($scalars as $name => [$type, $fastPath, $coerce]) {
+        foreach ($scalars as $name => [$type, $body]) {
             $method = $class->addMethod($name)->setStatic()->setReturnType($type);
             $method->addComment('@throws UnexpectedResponseException');
             $method->addParameter('value')->setType('mixed');
             $method->addParameter('path')->setType('string')->setDefaultValue('');
-            $method->setBody(implode("\n", [
-                "if ({$fastPath}) {",
-                '    return $value;',
-                '}',
-                '',
-                'if (is_scalar($value)) {',
-                "    return {$coerce};",
-                '}',
-                '',
-                "self::fail('{$type}', \$value, \$path);",
-            ]));
+            $method->setBody(implode("\n", $body));
 
             $orNull = $class->addMethod($name.'OrNull')->setStatic()->setReturnType('?'.$type);
             $orNull->addComment('@throws UnexpectedResponseException');
@@ -66,8 +110,16 @@ final readonly class CastEmitter
         $date->addParameter('value')->setType('mixed');
         $date->addParameter('path')->setType('string')->setDefaultValue('');
         $date->setBody(implode("\n", [
+            '$string = self::toString($value, $path);',
+            '',
+            "// Carbon::parse() turns '' into now() and zero-dates into nonsense — both",
+            '// are legacy-DB idioms for "no date", so they must fail, not fabricate.',
+            "if (trim(\$string) === '' || str_starts_with(\$string, '0000-00-00')) {",
+            "    self::fail('parseable date', \$value, \$path);",
+            '}',
+            '',
             'try {',
-            '    return Carbon::parse(self::toString($value, $path));',
+            '    return Carbon::parse($string);',
             '} catch (\\InvalidArgumentException) { // Carbon\'s InvalidFormatException extends this',
             "    self::fail('parseable date', \$value, \$path);",
             '}',
@@ -109,22 +161,25 @@ final readonly class CastEmitter
         $enum->addParameter('enumClass')->setType('string');
         $enum->addParameter('path')->setType('string')->setDefaultValue('');
         $enum->setBody(implode("\n", [
-            '$backing = is_int($value) ? $value : self::toString($value, $path);',
-            '$case = $enumClass::tryFrom($backing);',
+            '// Compare stringified backing values so int-backed enums accept numeric',
+            '// strings and string-backed enums accept ints — tryFrom() would TypeError.',
+            '$string = self::toString($value, $path);',
             '',
-            'if ($case === null) {',
-            "    self::fail('one of ['.implode(', ', array_map(static fn (\\BackedEnum \$c): string => (string) \$c->value, \$enumClass::cases())).']', \$value, \$path);",
+            'foreach ($enumClass::cases() as $case) {',
+            '    if ((string) $case->value === $string) {',
+            '        return $case;',
+            '    }',
             '}',
             '',
-            'return $case;',
+            "self::fail('one of ['.implode(', ', array_map(static fn (\\BackedEnum \$c): string => (string) \$c->value, \$enumClass::cases())).']', \$value, \$path);",
         ]));
 
         $maps = [
             'toMap' => ['mixed', '$item'],
-            'toStringMap' => ['string', 'self::toString($item, $path)'],
-            'toIntMap' => ['int', 'self::toInt($item, $path)'],
-            'toFloatMap' => ['float', 'self::toFloat($item, $path)'],
-            'toBoolMap' => ['bool', 'self::toBool($item, $path)'],
+            'toStringMap' => ['string', "self::toString(\$item, \$path.'['.\$key.']')"],
+            'toIntMap' => ['int', "self::toInt(\$item, \$path.'['.\$key.']')"],
+            'toFloatMap' => ['float', "self::toFloat(\$item, \$path.'['.\$key.']')"],
+            'toBoolMap' => ['bool', "self::toBool(\$item, \$path.'['.\$key.']')"],
         ];
 
         foreach ($maps as $name => [$valueType, $expr]) {

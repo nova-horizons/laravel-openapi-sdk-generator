@@ -40,12 +40,14 @@ final readonly class Expressions
         };
     }
 
-    private function cast(string $method, string $args, string $path): string
+    /** A Cast helper call: Cast::{method}({args}, '{path}'). */
+    public function cast(string $method, string $args, string $path): string
     {
         return $this->types->castClass()."::{$method}({$args}, ".var_export($path, true).')';
     }
 
-    private function castMethod(TypeRef $type): string
+    /** Cast method name for a scalar/date/map type. */
+    public function castMethod(TypeRef $type): string
     {
         return match ($type->kind) {
             TypeKind::String => 'toString',
@@ -69,7 +71,8 @@ final readonly class Expressions
         };
     }
 
-    private function hydrate(string $src, TypeRef $type, string $path): string
+    /** Expression hydrating $src into a composite type (Object/Enum/ArrayOf). */
+    public function hydrate(string $src, TypeRef $type, string $path): string
     {
         return match ($type->kind) {
             TypeKind::Object => $this->types->dtoClass((string) $type->className).'::fromArray('.$this->cast('toArray', $src, $path).')',

@@ -45,7 +45,7 @@ final readonly class DtoEmitter
             $this->addFromArray($namespace, $class, $object);
         }
 
-        $this->addJsonSerialize($class, $object);
+        $this->addJsonSerialize($namespace, $class, $object);
 
         return $file;
     }
@@ -124,21 +124,21 @@ final readonly class DtoEmitter
         $method = $class->addMethod('fromArray')->setStatic()->setReturnType('self');
         $method->addComment('@param array<array-key, mixed> $data');
         $method->addComment('');
-        $method->addComment('@throws '.$this->simplify($namespace, '\\'.$this->namespace.'\\Exceptions\\UnexpectedResponseException').' when the payload does not match the spec');
+        $method->addComment('@throws '.Types::simplify($namespace, '\\'.$this->namespace.'\\Exceptions\\UnexpectedResponseException').' when the payload does not match the spec');
         $method->addParameter('data')->setType('array');
 
         $lines = ['return new self('];
         foreach ($this->ordered($object) as $prop) {
             $src = '$data['.var_export($prop->wireName, true).']';
             $expr = $this->expressions->fromWire($src, $prop->type, $prop->required, $object->className.'.'.$prop->wireName);
-            $lines[] = "    {$prop->phpName}: ".$this->simplify($namespace, $expr).',';
+            $lines[] = "    {$prop->phpName}: ".Types::simplify($namespace, $expr).',';
         }
         $lines[] = ');';
 
         $method->setBody(implode("\n", $lines));
     }
 
-    private function addJsonSerialize(ClassType $class, ObjectDef $object): void
+    private function addJsonSerialize(PhpNamespace $namespace, ClassType $class, ObjectDef $object): void
     {
         $method = $class->addMethod('jsonSerialize')->setReturnType('array');
         $method->addComment('@return array<string, mixed>');
@@ -154,7 +154,7 @@ final readonly class DtoEmitter
                     // mixed sentinel props degrade to always-send-if-not-null
                     $lines[] = "if ({$access} !== null) {";
                 } else {
-                    $omitted = $class->getNamespace()?->simplifyName($this->types->omittedClass()) ?? 'Omitted';
+                    $omitted = $namespace->simplifyName($this->types->omittedClass());
                     $lines[] = "if (! {$access} instanceof {$omitted}) {";
                 }
                 $expr = $this->expressions->toWire($access, $prop->type, definitelySet: false);
@@ -175,29 +175,6 @@ final readonly class DtoEmitter
         $lines[] = '';
         $lines[] = 'return $out;';
 
-        $method->setBody(implode("\n", $this->simplifyLines($class, $lines)));
-    }
-
-    private function simplify(PhpNamespace $namespace, string $code): string
-    {
-        return preg_replace_callback(
-            '/\\\\[A-Za-z0-9_\\\\]+/',
-            fn (array $m): string => $namespace->simplifyName($m[0]),
-            $code,
-        ) ?? $code;
-    }
-
-    /**
-     * @param  list<string>  $lines
-     * @return list<string>
-     */
-    private function simplifyLines(ClassType $class, array $lines): array
-    {
-        $namespace = $class->getNamespace();
-        if ($namespace === null) {
-            return $lines;
-        }
-
-        return array_map(fn (string $line): string => $this->simplify($namespace, $line), $lines);
+        $method->setBody(implode("\n", Types::simplifyLines($namespace, $lines)));
     }
 }

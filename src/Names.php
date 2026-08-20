@@ -63,6 +63,18 @@ final class Names
         return self::className($tag);
     }
 
+    /** Client accessor method for a resource, e.g. "Widgets" => "widgets". */
+    public static function accessor(string $resourceName): string
+    {
+        return lcfirst($resourceName);
+    }
+
+    /** Suggested .env variable prefix for a config key, e.g. "gizmo-api" => "GIZMO_API". */
+    public static function envPrefix(string $configKeyTail): string
+    {
+        return strtoupper(str_replace('-', '_', Str::snake($configKeyTail)));
+    }
+
     /** Enum case name from a raw value, e.g. "30-day" => "V30Day", "annual" => "Annual". */
     public static function enumCase(string|int $value): string
     {

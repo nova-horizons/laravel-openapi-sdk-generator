@@ -95,6 +95,7 @@ $widgets->first()->recWidgetSN;   // int — hydrated from __rec_WidgetSN
 ### Client & container
 
 - `#[Singleton]` + `#[Config]` attributes on the client: `app(GizmoClient::class)` resolves configured and shared (from `services.{brand}.url` / `.api_key`, override with `--config-key`) with no service provider. Requires Laravel ≥ 12.31.
+- The client reads four config keys: `services.{brand}.url`, `.api_key`, `.timeout` (seconds; Laravel's default 30s when unset) and `.retries` (retries are off when unset). When `retries` is set, only safe failures re-fire — transport errors always, 5xx/429 on GETs only, with linear backoff; other 4xx responses and non-idempotent requests surface immediately.
 - Base URL resolution is **config first, spec second, never silent**: `services.{brand}.url` wins; absent that, the spec's `servers[0]` is the default when it's trustworthy (absolute, non-localhost — a localhost/relative entry is rejected with a generation warning, since that's usually just the host that generated the spec); with no URL from either, the client throws `Exceptions\ConfigurationException` on first use with the exact config key to set.
 - `make()` and `fromPendingRequest()` cover manual construction (custom middleware, tests); `make()`'s base URL defaults to the spec's server URL when one was baked in.
 - Escape hatch: `$client->http()` exposes the underlying `PendingRequest` for anything the spec doesn't cover.

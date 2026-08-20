@@ -207,4 +207,78 @@ final class GeneratorTest extends TestCase
             $this->assertStringContainsString('No syntax errors', (string) $output, $file);
         }
     }
+
+    public function test_cast_narrows_and_rejects_corrupt_scalars(): void
+    {
+        (new Generator(new Config(
+            specPath: __DIR__.'/fixtures/errdemo-spec.json',
+            outputDir: $this->out,
+            namespace: 'CastCheck\\Sdk',
+            clientClass: 'CastCheckClient',
+        )))->generate();
+
+        require_once $this->out.'/Exceptions/CastCheckException.php';
+        require_once $this->out.'/Exceptions/UnexpectedResponseException.php';
+        require_once $this->out.'/Cast.php';
+
+        $cast = '\\CastCheck\\Sdk\\Cast';
+
+        // Lossless numeric coercion still works
+        $this->assertSame(42, $cast::toInt('42'));
+        $this->assertSame(42, $cast::toInt('42.0'));
+        $this->assertSame(42, $cast::toInt(42.0));
+        $this->assertSame(12.7, $cast::toFloat('12.7'));
+        $this->assertSame('42', $cast::toString(42));
+        $this->assertFalse($cast::toBool('false'));
+        $this->assertTrue($cast::toBool('1'));
+        $this->assertSame(2026, $cast::toDate('2026-01-02')->year);
+
+        // Corrupt values fail loudly, with the wire path in the message
+        foreach ([
+            "toInt('abc')" => fn (): int => $cast::toInt('abc', 'Thing.qty'),
+            "toInt('12.7')" => fn (): int => $cast::toInt('12.7', 'Thing.qty'),
+            'toInt(12.7)' => fn (): int => $cast::toInt(12.7, 'Thing.qty'),
+            "toBool('yes')" => fn (): bool => $cast::toBool('yes', 'Thing.flag'),
+            'toString(false)' => fn (): string => $cast::toString(false, 'Thing.name'),
+            "toDate('')" => fn (): object => $cast::toDate('', 'Thing.at'),
+            "toDate('0000-00-00 00:00:00')" => fn (): object => $cast::toDate('0000-00-00 00:00:00', 'Thing.at'),
+        ] as $label => $call) {
+            try {
+                $call();
+                $this->fail("{$label} should have thrown");
+            } catch (\UnexpectedValueException $e) {
+                $this->assertInstanceOf('CastCheck\\Sdk\\Exceptions\\UnexpectedResponseException', $e, $label);
+                $this->assertStringContainsString('Thing.', $e->getMessage(), $label);
+            }
+        }
+
+        // Enum casting coerces across backing types instead of raising TypeError
+        $this->assertSame(CastCheckIntEnum::Three, $cast::toEnum('3', CastCheckIntEnum::class));
+        $this->assertSame(CastCheckIntEnum::Three, $cast::toEnum(3, CastCheckIntEnum::class));
+        $this->assertSame(CastCheckStringEnum::On, $cast::toEnum('on', CastCheckStringEnum::class));
+        try {
+            $cast::toEnum(9, CastCheckIntEnum::class, 'Thing.mode');
+            $this->fail('unknown enum value should throw');
+        } catch (\UnexpectedValueException $e) {
+            $this->assertStringContainsString('Thing.mode', $e->getMessage());
+        }
+
+        // Typed-map failures name the failing key
+        try {
+            $cast::toIntMap(['beacon-7' => 'x'], 'Report.counts');
+            $this->fail('map with a corrupt value should throw');
+        } catch (\UnexpectedValueException $e) {
+            $this->assertStringContainsString('Report.counts[beacon-7]', $e->getMessage());
+        }
+    }
+}
+
+enum CastCheckIntEnum: int
+{
+    case Three = 3;
+}
+
+enum CastCheckStringEnum: string
+{
+    case On = 'on';
 }

@@ -59,7 +59,7 @@ Two entry points share `Generator`: `bin/sdk-generate` (standalone CLI) and `src
 
 These are contracts consumers depend on — changes to them are breaking:
 
-- Generated output passes **PHPStan level 10** standalone. No blind casts: every wire value routes through the generated `Cast` class, which narrows `mixed` with runtime checks and throws `UnexpectedResponseException` on mismatch (scalars still coerce — some backends send numeric strings).
+- Generated output passes **PHPStan level 10** standalone. No blind casts: every wire value routes through the generated `Cast` class, which narrows `mixed` with runtime checks and throws `UnexpectedResponseException` on mismatch (numbers and numeric strings still interconvert when lossless — some backends send numeric strings; lossy or non-numeric values throw).
 - Request-only DTOs use the `Omitted::Value` sentinel default so PATCH semantics survive: omitted ≠ null (see README "Partial updates").
 - Per-SDK exceptions **extend** Illuminate's (`RequestException`/`ConnectionException`) and implement a `{Brand}Exception` marker interface. `UnexpectedResponseException` extends `UnexpectedValueException` deliberately — it must stay PHPStan-unchecked while Request/Connection cascade `@throws` (see docs/DESIGN.md "Operational lessons").
 - The client uses `#[Singleton]` + `#[Config]` container attributes (needs Laravel ≥ 12.31), no service provider. Base URL resolves config → trustworthy spec `servers[0]` default (absolute, non-localhost; else a generation warning) → generated `ConfigurationException` on first use. Never a silent `''`.

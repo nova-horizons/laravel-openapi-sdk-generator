@@ -11,7 +11,9 @@ namespace Orbit\Sdk;
 
 use Illuminate\Container\Attributes\Config;
 use Illuminate\Container\Attributes\Singleton;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Orbit\Sdk\Exceptions\ConfigurationException;
 use Orbit\Sdk\Resources\BeaconsResource;
@@ -89,7 +91,22 @@ final class OrbitClient
         }
 
         if ($this->retries !== null) {
-            $http = $http->retry($this->retries, 100);
+            $http = $http->retry(
+                $this->retries,
+                static fn (int $attempt): int => $attempt * 100,
+                // Retry only what is safe: transport failures always; 5xx/429 only on
+                // GETs. Other 4xx and non-idempotent requests surface immediately
+                // instead of being re-fired.
+                static function (\Throwable $e, PendingRequest $request, ?string $method = null): bool {
+                    if ($e instanceof ConnectionException) {
+                        return true;
+                    }
+
+                    return $method === 'GET'
+                        && $e instanceof RequestException
+                        && ($e->response->status() >= 500 || $e->response->status() === 429);
+                },
+            );
         }
 
         return $this->http = $http;

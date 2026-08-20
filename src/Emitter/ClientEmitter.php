@@ -6,6 +6,7 @@ namespace NovaHorizons\SdkGenerator\Emitter;
 
 use Nette\PhpGenerator\PhpFile;
 use NovaHorizons\SdkGenerator\Ir\ApiDef;
+use NovaHorizons\SdkGenerator\Names;
 
 /**
  * Emits the client. Container-friendly without a service provider:
@@ -32,7 +33,9 @@ final readonly class ClientEmitter
         $namespace = $file->addNamespace($this->namespace);
         $namespace->addUse('Illuminate\\Container\\Attributes\\Config');
         $namespace->addUse('Illuminate\\Container\\Attributes\\Singleton');
+        $namespace->addUse('Illuminate\\Http\\Client\\ConnectionException');
         $namespace->addUse('Illuminate\\Http\\Client\\PendingRequest');
+        $namespace->addUse('Illuminate\\Http\\Client\\RequestException');
         $namespace->addUse('Illuminate\\Support\\Facades\\Http');
 
         $namespace->addUse($this->namespace.'\\Exceptions\\ConfigurationException');
@@ -87,7 +90,7 @@ final readonly class ClientEmitter
             'return $client;',
         ]));
 
-        $auth = $header === 'Authorization'
+        $auth = $api->bearerAuth
             ? '$http = $http->withToken($this->apiKey);'
             : '$http = $http->withHeaders([self::API_KEY_HEADER => $this->apiKey]);';
 
@@ -116,7 +119,22 @@ final readonly class ClientEmitter
             '}',
             '',
             'if ($this->retries !== null) {',
-            '    $http = $http->retry($this->retries, 100);',
+            '    $http = $http->retry(',
+            '        $this->retries,',
+            '        static fn (int $attempt): int => $attempt * 100,',
+            '        // Retry only what is safe: transport failures always; 5xx/429 only on',
+            '        // GETs. Other 4xx and non-idempotent requests surface immediately',
+            '        // instead of being re-fired.',
+            '        static function (\\Throwable $e, PendingRequest $request, ?string $method = null): bool {',
+            '            if ($e instanceof ConnectionException) {',
+            '                return true;',
+            '            }',
+            '',
+            "            return \$method === 'GET'",
+            '                && $e instanceof RequestException',
+            '                && ($e->response->status() >= 500 || $e->response->status() === 429);',
+            '        },',
+            '    );',
             '}',
             '',
             'return $this->http = $http;',
@@ -126,7 +144,7 @@ final readonly class ClientEmitter
             $resourceClass = '\\'.$this->namespace.'\\Resources\\'.$resourceName.'Resource';
             $namespace->addUse(ltrim($resourceClass, '\\'));
 
-            $accessor = $class->addMethod(lcfirst($resourceName));
+            $accessor = $class->addMethod(Names::accessor($resourceName));
             $accessor->setReturnType($resourceClass);
             $accessor->setBody('return new '.$namespace->simplifyName($resourceClass).'($this->http());');
         }

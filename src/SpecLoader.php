@@ -5,15 +5,15 @@ declare(strict_types=1);
 namespace NovaHorizons\SdkGenerator;
 
 use cebe\openapi\Reader;
-use cebe\openapi\spec\OpenApi;
 use Symfony\Component\Yaml\Yaml;
 
 final readonly class LoadedSpec
 {
     /** @param array<string, mixed> $raw */
     public function __construct(
-        public OpenApi $openApi,
         public array $raw,
+        /** md5 of the raw spec bytes, for stamping generated files. */
+        public string $hash,
     ) {}
 }
 
@@ -52,6 +52,6 @@ final class SpecLoader
             throw new \RuntimeException("Spec failed validation:\n  - {$errors}");
         }
 
-        return new LoadedSpec($openApi, $raw);
+        return new LoadedSpec($raw, md5($contents));
     }
 }

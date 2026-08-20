@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace NovaHorizons\SdkGenerator\Emitter;
 
-use Illuminate\Support\Str;
 use NovaHorizons\SdkGenerator\Ir\ApiDef;
 use NovaHorizons\SdkGenerator\Ir\OperationDef;
 use NovaHorizons\SdkGenerator\Ir\ParamDef;
 use NovaHorizons\SdkGenerator\Ir\TypeKind;
+use NovaHorizons\SdkGenerator\Names;
 
 /**
  * Emits a README.md into the generated SDK so consumers never have to ask
@@ -46,7 +46,7 @@ final readonly class ReadmeEmitter
         $configSegments = explode('.', $this->configKey, 2);
         if (count($configSegments) === 2) {
             [$configFile, $configTail] = $configSegments;
-            $env = strtoupper(Str::snake($this->brand));
+            $env = Names::envPrefix(explode('.', $configTail)[0]);
             $urlComment = $api->serverUrl !== null
                 ? "          // optional — defaults to {$api->serverUrl}"
                 : '          // required (no server URL in the spec)';
@@ -70,6 +70,10 @@ final readonly class ReadmeEmitter
         $lines[] = 'With no URL from config, `make()`, or the spec, the client throws'
             .' `Exceptions\ConfigurationException` on first use — never a silent misdirected request.';
         $lines[] = '';
+        $lines[] = '`.timeout` is in seconds (Laravel\'s default 30s when unset). `.retries` is off unless set;'
+            .' when set, only safe failures retry — transport errors always, 5xx/429 on GETs only, with'
+            .' linear backoff — while other 4xx responses and non-idempotent requests surface immediately.';
+        $lines[] = '';
         $lines[] = '## Errors';
         $lines[] = '';
         $lines[] = "Everything this SDK throws implements `Exceptions\\{$marker}`:";
@@ -92,11 +96,17 @@ final readonly class ReadmeEmitter
         $lines[] = 'Factories return wire-keyed arrays seeded from spec examples;'
             ." `<factory>Dto()` variants return hydrated DTOs. Or bypass HTTP entirely with `{$client}::fromPendingRequest()`.";
         $lines[] = '';
+        $lines[] = '> **Fake patterns are method-blind.** `Http::fake()` matches URLs only, so operations'
+            .' on the same path (list vs create) share an identical pattern constant — as array keys, one'
+            .' silently overwrites the other — and a wildcard like `*/things/*` also matches deeper routes.'
+            .' Register more specific patterns first, and branch on `$request->method()` in a fake closure'
+            .' when two operations share a URL.';
+        $lines[] = '';
         $lines[] = '## Endpoints';
 
         foreach ($api->resources as $resourceName => $operations) {
             $lines[] = '';
-            $lines[] = "### {$resourceName} — `\$client->".lcfirst($resourceName).'()`';
+            $lines[] = "### {$resourceName} — `\$client->".Names::accessor($resourceName).'()`';
             $lines[] = '';
             $lines[] = '| Method | Endpoint | Returns |';
             $lines[] = '| --- | --- | --- |';
@@ -105,7 +115,7 @@ final readonly class ReadmeEmitter
                 $deprecated = $op->deprecated ? ' **(deprecated)**' : '';
                 $lines[] = "| `{$op->methodName}({$this->paramSummary($op)})`{$deprecated} | "
                     .strtoupper($op->httpMethod)." `{$op->path}` | {$returns} |";
-                if ($this->isPaginatedForDoc($op)) {
+                if ($op->isPaginated()) {
                     $lines[] = "| `{$op->methodName}Lazy(...)` | auto-paging | `LazyCollection<".$this->itemShort($op).'>` |';
                 }
             }
@@ -156,22 +166,5 @@ final readonly class ReadmeEmitter
         $items = $op->returnType?->items;
 
         return $items?->className !== null ? 'Dto\\'.$items->className : 'mixed';
-    }
-
-    private function isPaginatedForDoc(OperationDef $op): bool
-    {
-        if ($op->httpMethod !== 'get' || $op->returnType?->kind !== TypeKind::ArrayOf
-            || ($op->returnType->items ?? null)?->kind !== TypeKind::Object) {
-            return false;
-        }
-
-        $found = 0;
-        foreach ($op->params as $param) {
-            if ($param->in === 'query' && in_array($param->wireName, ['offset', 'limit'], true) && $param->type->kind === TypeKind::Int) {
-                $found++;
-            }
-        }
-
-        return $found === 2;
     }
 }

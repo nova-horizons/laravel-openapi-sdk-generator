@@ -24,17 +24,12 @@ final readonly class ExceptionsEmitter
         private Types $types,
     ) {}
 
-    public function interfaceName(): string
-    {
-        return $this->brand.'Exception';
-    }
-
     /** @return array<string, PhpFile> relative path => file */
     public function emit(ApiDef $api): array
     {
         $files = [];
         $ns = $this->namespace.'\\Exceptions';
-        $marker = $this->interfaceName();
+        $marker = $this->brand.'Exception';
 
         // Marker interface
         $file = new PhpFile;
@@ -77,41 +72,44 @@ final readonly class ExceptionsEmitter
 
         $files['Exceptions/RequestException.php'] = $file;
 
-        // ConnectionException
-        $file = new PhpFile;
-        $file->setStrictTypes();
-        $namespace = $file->addNamespace($ns);
-        $class = $namespace->addClass('ConnectionException');
-        $class->setFinal()
-            ->setExtends('Illuminate\\Http\\Client\\ConnectionException')
-            ->addImplement($ns.'\\'.$marker);
-        $class->addComment("Transport failure talking to the {$this->brand} API (DNS, timeout, refused connection).");
-        $files['Exceptions/ConnectionException.php'] = $file;
+        $files['Exceptions/ConnectionException.php'] = $this->exceptionClass(
+            'ConnectionException',
+            'Illuminate\\Http\\Client\\ConnectionException',
+            "Transport failure talking to the {$this->brand} API (DNS, timeout, refused connection).",
+        );
 
-        // UnexpectedResponseException
-        $file = new PhpFile;
-        $file->setStrictTypes();
-        $namespace = $file->addNamespace($ns);
-        $class = $namespace->addClass('UnexpectedResponseException');
-        $class->setFinal()
-            ->setExtends(\UnexpectedValueException::class)
-            ->addImplement($ns.'\\'.$marker);
-        $class->addComment("A 2xx response whose body does not match the OpenAPI spec.\n");
-        $class->addComment('Thrown by the Cast helpers during hydration.');
-        $files['Exceptions/UnexpectedResponseException.php'] = $file;
+        $files['Exceptions/UnexpectedResponseException.php'] = $this->exceptionClass(
+            'UnexpectedResponseException',
+            \UnexpectedValueException::class,
+            "A 2xx response whose body does not match the OpenAPI spec.\n",
+            'Thrown by the Cast helpers during hydration.',
+        );
 
-        // ConfigurationException
-        $file = new PhpFile;
-        $file->setStrictTypes();
-        $namespace = $file->addNamespace($ns);
-        $class = $namespace->addClass('ConfigurationException');
-        $class->setFinal()
-            ->setExtends(\LogicException::class)
-            ->addImplement($ns.'\\'.$marker);
-        $class->addComment("The {$this->brand} client is missing required setup (e.g. no base URL).\n");
-        $class->addComment('A deployment/wiring problem, not an API failure — fix the config rather than catching this.');
-        $files['Exceptions/ConfigurationException.php'] = $file;
+        $files['Exceptions/ConfigurationException.php'] = $this->exceptionClass(
+            'ConfigurationException',
+            \LogicException::class,
+            "The {$this->brand} client is missing required setup (e.g. no base URL).\n",
+            'A deployment/wiring problem, not an API failure — fix the config rather than catching this.',
+        );
 
         return $files;
+    }
+
+    /** A final exception class extending $extends and implementing the marker interface. */
+    private function exceptionClass(string $name, string $extends, string ...$comments): PhpFile
+    {
+        $ns = $this->namespace.'\\Exceptions';
+
+        $file = new PhpFile;
+        $file->setStrictTypes();
+        $class = $file->addNamespace($ns)->addClass($name);
+        $class->setFinal()
+            ->setExtends($extends)
+            ->addImplement($ns.'\\'.$this->brand.'Exception');
+        foreach ($comments as $comment) {
+            $class->addComment($comment);
+        }
+
+        return $file;
     }
 }

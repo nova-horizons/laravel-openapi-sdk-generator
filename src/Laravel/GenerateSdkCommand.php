@@ -6,10 +6,11 @@ namespace NovaHorizons\SdkGenerator\Laravel;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Process;
-use Illuminate\Support\Str;
 use NovaHorizons\SdkGenerator\Config;
 use NovaHorizons\SdkGenerator\ConsumerManifest;
 use NovaHorizons\SdkGenerator\Generator;
+use NovaHorizons\SdkGenerator\Names;
+use NovaHorizons\SdkGenerator\SpecLoader;
 
 final class GenerateSdkCommand extends Command
 {
@@ -58,6 +59,9 @@ final class GenerateSdkCommand extends Command
             return self::FAILURE;
         }
 
+        // Parse and validate once — only the per-consumer config differs below.
+        $loaded = SpecLoader::load($spec);
+
         foreach ($targets as $key) {
             if (! array_key_exists($key, $consumers)) {
                 $this->error("Unknown consumer '{$key}'. Configured: ".(implode(', ', array_keys($consumers)) ?: '(none)'));
@@ -88,7 +92,7 @@ final class GenerateSdkCommand extends Command
                 clientClass: $manifest->client,
                 configKey: $manifest->configKey,
                 allow: $manifest->allow,
-            )))->generate();
+            )))->generate($loaded);
 
             foreach ($result->warnings as $warning) {
                 $this->warn('  '.$warning);
@@ -149,7 +153,7 @@ final class GenerateSdkCommand extends Command
         $contents = is_file($configFile) ? (string) file_get_contents($configFile) : '';
 
         if (! str_contains($contents, "'{$key}'") && ! str_contains($contents, "\"{$key}\"")) {
-            $env = strtoupper(str_replace('-', '_', Str::snake($key)));
+            $env = Names::envPrefix($key);
             $this->warn(
                 "  Heads up: config/{$file}.php in the consumer doesn't define '{$key}' — app({$clientClass}::class) "
                 ."will use the spec's default URL, or throw ConfigurationException if the spec has none. "

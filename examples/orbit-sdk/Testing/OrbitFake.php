@@ -21,6 +21,12 @@ use Orbit\Sdk\Dto\UsageReport;
  *
  * Factory arrays use wire keys and are seeded from the spec's example values;
  * pass overrides with wire keys: OrbitFake::error(['field' => ...]).
+ *
+ * Http::fake() matches URL patterns only — it never sees the HTTP method. Two
+ * operations on the same path (list vs create) share an identical pattern, and a
+ * wildcard pattern also matches deeper routes. Register more specific patterns
+ * first, and branch on $request->method() in a fake closure when operations share
+ * a URL.
  */
 final class OrbitFake
 {

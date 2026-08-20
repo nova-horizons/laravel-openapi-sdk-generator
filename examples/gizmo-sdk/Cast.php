@@ -28,7 +28,7 @@ final class Cast
             return $value;
         }
 
-        if (is_scalar($value)) {
+        if (is_int($value) || is_float($value)) {
             return (string) $value;
         }
 
@@ -52,7 +52,15 @@ final class Cast
             return $value;
         }
 
-        if (is_scalar($value)) {
+        // Integral numeric strings ("42", "42.0") coerce; "12.7" or "abc" throw.
+        if (is_string($value) && is_numeric($value)) {
+            $int = (int) $value;
+            if ((string) $int === $value || (float) $value === (float) $int) {
+                return $int;
+            }
+        }
+
+        if (is_float($value) && $value === (float) (int) $value) {
             return (int) $value;
         }
 
@@ -76,7 +84,7 @@ final class Cast
             return $value;
         }
 
-        if (is_scalar($value)) {
+        if (is_string($value) && is_numeric($value)) {
             return (float) $value;
         }
 
@@ -100,8 +108,12 @@ final class Cast
             return $value;
         }
 
-        if (is_scalar($value)) {
-            return (bool) $value;
+        if ($value === 0 || $value === '0' || $value === 'false') {
+            return false;
+        }
+
+        if ($value === 1 || $value === '1' || $value === 'true') {
+            return true;
         }
 
         self::fail('bool', $value, $path);
@@ -120,8 +132,16 @@ final class Cast
      */
     public static function toDate(mixed $value, string $path = ''): Carbon
     {
+        $string = self::toString($value, $path);
+
+        // Carbon::parse() turns '' into now() and zero-dates into nonsense — both
+        // are legacy-DB idioms for "no date", so they must fail, not fabricate.
+        if (trim($string) === '' || str_starts_with($string, '0000-00-00')) {
+            self::fail('parseable date', $value, $path);
+        }
+
         try {
-            return Carbon::parse(self::toString($value, $path));
+            return Carbon::parse($string);
         } catch (\InvalidArgumentException) { // Carbon's InvalidFormatException extends this
             self::fail('parseable date', $value, $path);
         }
@@ -169,14 +189,17 @@ final class Cast
      */
     public static function toEnum(mixed $value, string $enumClass, string $path = ''): \BackedEnum
     {
-        $backing = is_int($value) ? $value : self::toString($value, $path);
-        $case = $enumClass::tryFrom($backing);
+        // Compare stringified backing values so int-backed enums accept numeric
+        // strings and string-backed enums accept ints — tryFrom() would TypeError.
+        $string = self::toString($value, $path);
 
-        if ($case === null) {
-            self::fail('one of ['.implode(', ', array_map(static fn (\BackedEnum $c): string => (string) $c->value, $enumClass::cases())).']', $value, $path);
+        foreach ($enumClass::cases() as $case) {
+            if ((string) $case->value === $string) {
+                return $case;
+            }
         }
 
-        return $case;
+        self::fail('one of ['.implode(', ', array_map(static fn (\BackedEnum $c): string => (string) $c->value, $enumClass::cases())).']', $value, $path);
     }
 
     /**
@@ -213,7 +236,7 @@ final class Cast
     {
         $out = [];
         foreach (self::toArray($value, $path) as $key => $item) {
-            $out[(string) $key] = self::toString($item, $path);
+            $out[(string) $key] = self::toString($item, $path.'['.$key.']');
         }
 
         return $out;
@@ -238,7 +261,7 @@ final class Cast
     {
         $out = [];
         foreach (self::toArray($value, $path) as $key => $item) {
-            $out[(string) $key] = self::toInt($item, $path);
+            $out[(string) $key] = self::toInt($item, $path.'['.$key.']');
         }
 
         return $out;
@@ -263,7 +286,7 @@ final class Cast
     {
         $out = [];
         foreach (self::toArray($value, $path) as $key => $item) {
-            $out[(string) $key] = self::toFloat($item, $path);
+            $out[(string) $key] = self::toFloat($item, $path.'['.$key.']');
         }
 
         return $out;
@@ -288,7 +311,7 @@ final class Cast
     {
         $out = [];
         foreach (self::toArray($value, $path) as $key => $item) {
-            $out[(string) $key] = self::toBool($item, $path);
+            $out[(string) $key] = self::toBool($item, $path.'['.$key.']');
         }
 
         return $out;

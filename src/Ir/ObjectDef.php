@@ -14,8 +14,6 @@ final class ObjectDef
         /** All-optional request-body DTO: uses the Omitted sentinel so PATCH-style
          *  updates can distinguish "not provided" from "explicitly null". */
         public bool $sentinelStyle = false,
-        public bool $usedInRequest = false,
-        public bool $usedInResponse = false,
         public bool $deprecated = false,
     ) {}
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace NovaHorizons\SdkGenerator\Emitter;
 
+use Nette\PhpGenerator\PhpNamespace;
 use NovaHorizons\SdkGenerator\Ir\TypeKind;
 use NovaHorizons\SdkGenerator\Ir\TypeRef;
 
@@ -79,5 +80,24 @@ final readonly class Types
     public function needsDoc(TypeRef $type): bool
     {
         return in_array($type->kind, [TypeKind::ArrayOf, TypeKind::Map], true);
+    }
+
+    /** Shortens fully-qualified class names in emitted code via the namespace's use map. */
+    public static function simplify(PhpNamespace $namespace, string $code): string
+    {
+        return preg_replace_callback(
+            '/\\\\[A-Za-z0-9_\\\\]+/',
+            fn (array $m): string => $namespace->simplifyName($m[0]),
+            $code,
+        ) ?? $code;
+    }
+
+    /**
+     * @param  list<string>  $lines
+     * @return list<string>
+     */
+    public static function simplifyLines(PhpNamespace $namespace, array $lines): array
+    {
+        return array_map(fn (string $line): string => self::simplify($namespace, $line), $lines);
     }
 }
