@@ -1,0 +1,53 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+foreach ([getcwd().'/vendor/autoload.php', __DIR__.'/../vendor/autoload.php', __DIR__.'/../../../autoload.php'] as $autoload) {
+    if (file_exists($autoload)) {
+        require $autoload;
+        if (class_exists(\NovaHorizons\SdkGenerator\Generator::class)) {
+            break;
+        }
+    }
+}
+
+use NovaHorizons\SdkGenerator\Config;
+use NovaHorizons\SdkGenerator\Generator;
+
+$args = array_slice($argv, 1);
+$spec = null;
+$options = [];
+
+foreach ($args as $arg) {
+    if (preg_match('/^--([a-z-]+)=(.*)$/', $arg, $m)) {
+        $options[$m[1]] = $m[2];
+    } elseif ($spec === null) {
+        $spec = $arg;
+    }
+}
+
+if ($spec === null || ! isset($options['namespace'], $options['out'])) {
+    fwrite(STDERR, "Usage: sdk-generate <spec.json|yaml> --namespace='Vendor\\\\Sdk' --out=./generated [--client=FooClient]\n");
+    exit(1);
+}
+
+try {
+    $result = (new Generator(new Config(
+        specPath: $spec,
+        outputDir: $options['out'],
+        namespace: str_replace('\\\\', '\\', $options['namespace']),
+        clientClass: $options['client'] ?? null,
+        configKey: $options['config-key'] ?? null,
+        allow: isset($options['allow']) ? explode(',', $options['allow']) : [],
+    )))->generate();
+} catch (Throwable $e) {
+    fwrite(STDERR, 'Generation failed: '.$e->getMessage()."\n");
+    exit(1);
+}
+
+foreach ($result->warnings as $warning) {
+    fwrite(STDERR, "warning: {$warning}\n");
+}
+
+echo count($result->files)." files written to {$options['out']}\n";

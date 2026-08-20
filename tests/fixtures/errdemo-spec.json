@@ -1,0 +1,87 @@
+{
+ "openapi": "3.0.0",
+ "info": {
+  "title": "ErrDemo",
+  "version": "1.0.0"
+ },
+ "paths": {
+  "/things/{id}": {
+   "get": {
+    "operationId": "getThing",
+    "tags": [
+     "Things"
+    ],
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "ok",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Thing"
+        }
+       }
+      }
+     },
+     "404": {
+      "description": "nope",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     },
+     "422": {
+      "description": "invalid",
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Error"
+        }
+       }
+      }
+     }
+    },
+    "deprecated": true
+   }
+  }
+ },
+ "components": {
+  "schemas": {
+   "Thing": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "name": {
+      "type": "string",
+      "deprecated": true
+     }
+    }
+   },
+   "Error": {
+    "type": "object",
+    "properties": {
+     "error": {
+      "type": "string"
+     },
+     "message": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

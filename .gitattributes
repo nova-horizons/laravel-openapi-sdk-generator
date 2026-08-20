@@ -1,0 +1,11 @@
+/.github export-ignore
+/tests export-ignore
+/docs export-ignore
+/examples export-ignore
+/CLAUDE.md export-ignore
+/phpunit.xml export-ignore
+/phpstan.neon export-ignore
+/phpstan-laravel-stubs.php export-ignore
+/pint.json export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
