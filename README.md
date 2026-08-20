@@ -1,6 +1,7 @@
 # laravel-openapi-sdk-generator
 
 [![CI](https://github.com/nova-horizons/laravel-openapi-sdk-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/nova-horizons/laravel-openapi-sdk-generator/actions/workflows/ci.yml)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/nova-horizons/laravel-openapi-sdk-generator)](https://packagist.org/packages/nova-horizons/laravel-openapi-sdk-generator)
 
 > [!WARNING]
 > **Beta.** This package is under active development ahead of a 1.0 release — the generator CLI, config format, and shape of generated code may change between releases. Feedback and issues are welcome at [nova-horizons/laravel-openapi-sdk-generator](https://github.com/nova-horizons/laravel-openapi-sdk-generator/issues).
