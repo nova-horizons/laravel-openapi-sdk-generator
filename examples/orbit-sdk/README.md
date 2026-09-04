@@ -1,6 +1,6 @@
 # Orbit SDK
 
-Generated Laravel-native client for **Orbit** (spec v2.0.0).
+Generated Laravel-native client for **Orbit** (spec v2.0.0, content hash `f1c0be706599`).
 Do not edit by hand — regenerate from the producer project.
 
 ## Setup

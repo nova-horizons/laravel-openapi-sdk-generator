@@ -12,7 +12,7 @@ final readonly class LoadedSpec
     /** @param array<string, mixed> $raw */
     public function __construct(
         public array $raw,
-        /** md5 of the raw spec bytes, for stamping generated files. */
+        /** md5 of the raw spec bytes, recorded in the generated README. */
         public string $hash,
     ) {}
 }

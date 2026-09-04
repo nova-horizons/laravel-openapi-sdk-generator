@@ -15,6 +15,10 @@
 - `toEnum` compares stringified backing values, so an int-backed enum receiving `"3"` (or a string-backed one receiving `3`) hydrates correctly instead of throwing an unpathed `TypeError`.
 - Typed-map cast failures now name the failing key (`UsageReport.counts[beacon-7]: expected int, got string`).
 
+### Changed
+
+- The per-file `@generated` stamp no longer includes the spec content hash — it now appears only in the generated README. Regenerating from a reserialized-but-equivalent spec previously touched every file, hiding the real diff.
+
 ### Added
 
 - The generated README and `{Brand}Fake` class docblock now warn that `Http::fake()` URL patterns are method-blind: same-path operations share an identical pattern constant (as array keys, one silently overwrites the other) and wildcards match deeper routes.

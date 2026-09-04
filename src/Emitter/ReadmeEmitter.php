@@ -24,7 +24,8 @@ final readonly class ReadmeEmitter
         private Types $types,
     ) {}
 
-    public function emit(ApiDef $api): string
+    /** @param string $specHash short content hash of the spec this SDK was generated from */
+    public function emit(ApiDef $api, string $specHash): string
     {
         $ns = $this->namespace;
         $client = $this->clientClass;
@@ -34,7 +35,7 @@ final readonly class ReadmeEmitter
         $lines = [];
         $lines[] = "# {$api->title} SDK";
         $lines[] = '';
-        $lines[] = "Generated Laravel-native client for **{$api->title}** (spec v{$api->version}).";
+        $lines[] = "Generated Laravel-native client for **{$api->title}** (spec v{$api->version}, content hash `{$specHash}`).";
         $lines[] = 'Do not edit by hand — regenerate from the producer project.';
         $lines[] = '';
         $lines[] = '## Setup';

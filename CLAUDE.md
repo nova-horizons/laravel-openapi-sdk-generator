@@ -64,7 +64,7 @@ These are contracts consumers depend on — changes to them are breaking:
 - Per-SDK exceptions **extend** Illuminate's (`RequestException`/`ConnectionException`) and implement a `{Brand}Exception` marker interface. `UnexpectedResponseException` extends `UnexpectedValueException` deliberately — it must stay PHPStan-unchecked while Request/Connection cascade `@throws` (see docs/DESIGN.md "Operational lessons").
 - The client uses `#[Singleton]` + `#[Config]` container attributes (needs Laravel ≥ 12.31), no service provider. Base URL resolves config → trustworthy spec `servers[0]` default (absolute, non-localhost; else a generation warning) → generated `ConfigurationException` on first use. Never a silent `''`.
 - Zero runtime dependencies beyond what Laravel ships.
-- Every generated file is stamped with spec title/version and a 12-char spec hash.
+- Every generated file is stamped with spec title/version. The 12-char spec content hash appears only in the generated README — never in per-file stamps, or an unchanged SDK diffs as fully rewritten on every regeneration.
 
 ## Notes
 

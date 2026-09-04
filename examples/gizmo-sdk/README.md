@@ -1,6 +1,6 @@
 # Gizmo Works API SDK
 
-Generated Laravel-native client for **Gizmo Works API** (spec v1.4.0).
+Generated Laravel-native client for **Gizmo Works API** (spec v1.4.0, content hash `28a560b46fc9`).
 Do not edit by hand — regenerate from the producer project.
 
 ## Setup
