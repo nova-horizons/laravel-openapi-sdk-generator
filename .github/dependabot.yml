@@ -11,6 +11,10 @@ updates:
       default-days: 3
     assignees:
       - "pb30"
+    groups:
+      illuminate:
+        patterns:
+          - "illuminate/*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
